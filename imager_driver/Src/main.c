@@ -38,6 +38,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "stdio.h"
 //#include "stm32f4xx_hal_gpio
 
 /** @addtogroup STM32F4xx_HAL_Examples
@@ -52,6 +53,9 @@
 /* Private define ------------------------------------------------------------*/
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef    ADCHandle;
+ADC_ChannelConfTypeDef chConfig;
+
 /* Private function prototypes -----------------------------------------------*/
 static void SystemClock_Config(void);
 static void Error_Handler(void);
@@ -61,7 +65,7 @@ static void config_us_delay(void);
 static void config_pins(void);
 static void set_col_parity(uint8_t col);
 static void read_pixel(uint8_t row, uint8_t col);
-//static void EXTILine0_Config(void);
+static void adc_init(void);
 
 /* Private functions ---------------------------------------------------------*/
 
@@ -91,12 +95,18 @@ int main(void)
   /* Configure EXTI Line0 (connected to PA0 pin) in interrupt mode */
   config_us_delay();
   config_pins();
+  adc_init();
 //  EXTILine0_Config();
   
   /* Infinite loop */
+  uint32_t val;
   while (1)
   {
-    read_pixel(0, 1);
+//    read_pixel(0, 1);
+    HAL_ADC_Start(&ADCHandle);
+    HAL_ADC_PollForConversion(&ADCHandle, HAL_MAX_DELAY);
+    val = HAL_ADC_GetValue(&ADCHandle);
+    printf("%d\n", val);
   }
 }
 
@@ -161,6 +171,48 @@ static void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+static void adc_init() {
+  ADCHandle.Instance = ADC1;
+  
+  ADCHandle.Init.Resolution = ADC_RESOLUTION_12B;
+  ADCHandle.Init.ScanConvMode = ENABLE;
+  ADCHandle.Init.ContinuousConvMode = DISABLE;
+  ADCHandle.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  ADCHandle.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  ADCHandle.Init.NbrOfConversion = 1;
+  ADCHandle.Init.DiscontinuousConvMode = ENABLE;
+  ADCHandle.Init.NbrOfDiscConversion = 1;
+//  ADCHandle.Init.DMAContinuousRequests = DISABLE;
+  ADCHandle.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  assert(HAL_ADC_Init(&ADCHandle) == HAL_OK);
+  
+  chConfig.Channel = ADC_CHANNEL_15;
+  chConfig.Rank = 1;
+  chConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+  chConfig.Offset = 0;
+  assert(HAL_ADC_ConfigChannel(&ADCHandle, &chConfig) == HAL_OK);
+}
+
+void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
+{
+  GPIO_InitTypeDef          GPIO_InitStruct;
+  static DMA_HandleTypeDef  hdma_adc;
+  
+  /*##-1- Enable peripherals and GPIO Clocks #################################*/
+  /* Enable GPIO clock */
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  /* ADC3 Periph clock enable */
+  __HAL_RCC_ADC1_CLK_ENABLE();
+  __HAL_RCC_ADC2_CLK_ENABLE();
+  
+  /*##-2- Configure peripheral GPIO ##########################################*/ 
+  /* ADC3 Channel8 GPIO pin configuration */
+  GPIO_InitStruct.Pin = GPIO_PIN_5;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 }
 
 // TODO: set up us delay properly

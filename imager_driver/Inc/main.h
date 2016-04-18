@@ -103,6 +103,8 @@
 } while(0)
 
 /* Exported functions ------------------------------------------------------- */
+void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc);
+
 
 #endif /* __MAIN_H */
 
