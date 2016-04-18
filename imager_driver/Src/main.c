@@ -56,6 +56,14 @@
 ADC_HandleTypeDef    ADCHandle;
 ADC_ChannelConfTypeDef chConfig;
 
+GPIO_TypeDef *COL_ADC_BANK[] = {GPIOF, GPIOF, GPIOF, GPIOF, GPIOF, GPIOF, GPIOF, GPIOF, GPIOC, GPIOC, GPIOC, GPIOC, GPIOC, GPIOC, GPIOA, GPIOA, GPIOA, GPIOA, GPIOA, GPIOA, GPIOA, GPIOA, GPIOB, GPIOB};
+uint16_t COL_ADC_PIN[] = {GPIO_PIN_3, GPIO_PIN_4, GPIO_PIN_5, GPIO_PIN_6, GPIO_PIN_7, GPIO_PIN_8, GPIO_PIN_9, GPIO_PIN_1, GPIO_PIN_0, GPIO_PIN_1, GPIO_PIN_2, GPIO_PIN_3, GPIO_PIN_4, GPIO_PIN_5, GPIO_PIN_0, GPIO_PIN_1, GPIO_PIN_2, GPIO_PIN_3, GPIO_PIN_4, GPIO_PIN_5, GPIO_PIN_6, GPIO_PIN_7, GPIO_PIN_0, GPIO_PIN_1};
+ADC_TypeDef *COL_ADC[] = {ADC3, ADC3, ADC3, ADC3, ADC3, ADC3, ADC3, ADC3, ADC3, ADC3, ADC3, ADC3, ADC1, ADC1, ADC3, ADC3, ADC3, ADC3, ADC1, ADC1, ADC1, ADC1, ADC1, ADC1};
+uint32_t COL_ADC_CHAN[] = {ADC_CHANNEL_9, ADC_CHANNEL_14, ADC_CHANNEL_15, ADC_CHANNEL_4, ADC_CHANNEL_5, ADC_CHANNEL_6, ADC_CHANNEL_7, ADC_CHANNEL_8, ADC_CHANNEL_10, ADC_CHANNEL_11, ADC_CHANNEL_12, ADC_CHANNEL_13, ADC_CHANNEL_14, ADC_CHANNEL_15, ADC_CHANNEL_0, ADC_CHANNEL_1, ADC_CHANNEL_2, ADC_CHANNEL_3, ADC_CHANNEL_4, ADC_CHANNEL_5, ADC_CHANNEL_6, ADC_CHANNEL_7, ADC_CHANNEL_8, ADC_CHANNEL_9};
+
+GPIO_TypeDef *MISC_BANK[] = {GPIOE, GPIOE, GPIOB, GPIOB, GPIOB, GPIOF, GPIOC, GPIOC, GPIOC, GPIOE, GPIOE, GPIOE, GPIOE, GPIOF, GPIOE, GPIOF, GPIOF, GPIOF};
+uint16_t MISC_PIN[] = {GPIO_PIN_1, GPIO_PIN_0, GPIO_PIN_9, GPIO_PIN_8, GPIO_PIN_2, GPIO_PIN_1, GPIO_PIN_1, GPIO_PIN_1, GPIO_PIN_1, GPIO_PIN_6, GPIO_PIN_5, GPIO_PIN_4, GPIO_PIN_2, GPIO_PIN_0, GPIO_PIN_3, GPIO_PIN_2, GPIO_PIN_1, GPIO_PIN_1};
+
 /* Private function prototypes -----------------------------------------------*/
 static void SystemClock_Config(void);
 static void Error_Handler(void);
@@ -64,8 +72,10 @@ static void load_col(uint8_t col);
 static void config_us_delay(void);
 static void config_pins(void);
 static void set_col_parity(uint8_t col);
-static void read_pixel(uint8_t row, uint8_t col);
+static int16_t read_pixel(uint8_t row, uint8_t col);
 static void adc_init(void);
+static uint16_t adc_read(uint8_t col);
+static void read_image(void);
 
 /* Private functions ---------------------------------------------------------*/
 
@@ -96,18 +106,10 @@ int main(void)
   config_us_delay();
   config_pins();
   adc_init();
-//  EXTILine0_Config();
   
-  /* Infinite loop */
-  uint32_t val;
-  while (1)
-  {
-//    read_pixel(0, 1);
-    HAL_ADC_Start(&ADCHandle);
-    HAL_ADC_PollForConversion(&ADCHandle, HAL_MAX_DELAY);
-    val = HAL_ADC_GetValue(&ADCHandle);
-    printf("%d\n", val);
-  }
+  read_image();
+  
+  return 0;
 }
 
 /**
@@ -174,8 +176,6 @@ static void SystemClock_Config(void)
 }
 
 static void adc_init() {
-  ADCHandle.Instance = ADC1;
-  
   ADCHandle.Init.Resolution = ADC_RESOLUTION_12B;
   ADCHandle.Init.ScanConvMode = ENABLE;
   ADCHandle.Init.ContinuousConvMode = DISABLE;
@@ -186,13 +186,21 @@ static void adc_init() {
   ADCHandle.Init.NbrOfDiscConversion = 1;
 //  ADCHandle.Init.DMAContinuousRequests = DISABLE;
   ADCHandle.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  
+  ADCHandle.Instance = ADC1;
   assert(HAL_ADC_Init(&ADCHandle) == HAL_OK);
   
-  chConfig.Channel = ADC_CHANNEL_15;
+  ADCHandle.Instance = ADC2;
+  assert(HAL_ADC_Init(&ADCHandle) == HAL_OK);
+  
+  ADCHandle.Instance = ADC3;
+  assert(HAL_ADC_Init(&ADCHandle) == HAL_OK);
+  
+//  chConfig.Channel = ADC_CHANNEL_15;
   chConfig.Rank = 1;
   chConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
   chConfig.Offset = 0;
-  assert(HAL_ADC_ConfigChannel(&ADCHandle, &chConfig) == HAL_OK);
+//  assert(HAL_ADC_ConfigChannel(&ADCHandle, &chConfig) == HAL_OK);
 }
 
 void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
@@ -202,17 +210,23 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
   
   /*##-1- Enable peripherals and GPIO Clocks #################################*/
   /* Enable GPIO clock */
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
-  /* ADC3 Periph clock enable */
+  __HAL_RCC_GPIOE_CLK_ENABLE();
+  __HAL_RCC_GPIOF_CLK_ENABLE();
+  /* ADC Periph clock enable */
   __HAL_RCC_ADC1_CLK_ENABLE();
   __HAL_RCC_ADC2_CLK_ENABLE();
+  __HAL_RCC_ADC3_CLK_ENABLE();
   
   /*##-2- Configure peripheral GPIO ##########################################*/ 
-  /* ADC3 Channel8 GPIO pin configuration */
-  GPIO_InitStruct.Pin = GPIO_PIN_5;
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  for (int i = 0; i < NUM_ADC_PINS; i++) {  
+    GPIO_InitStruct.Pin = COL_ADC_PIN[i];
+    HAL_GPIO_Init(COL_ADC_BANK[i], &GPIO_InitStruct);
+  }
 }
 
 // TODO: set up us delay properly
@@ -289,19 +303,35 @@ static void config_pins(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOE_CLK_ENABLE();
+  __HAL_RCC_GPIOF_CLK_ENABLE();
   
   GPIO_InitStructure.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStructure.Pull = GPIO_NOPULL;
-  GPIO_InitStructure.Pin = 0x00FF;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStructure);
   
-  GPIO_InitStructure.Pin = 0xFFFF;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStructure);
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStructure);
+  // Initialize misc (i.e., non-ADC) pins as GPIOs
+  for (int i = 0; i < NUM_MISC_PINS; i++) {
+    GPIO_InitStructure.Pin = MISC_PIN[i];
+    HAL_GPIO_Init(MISC_BANK[i], &GPIO_InitStructure);
+  }
 }
 
-static void read_pixel(uint8_t row, uint8_t col)
+static void read_image()
 { 
+  printf("img = [");
+  for (int i = 0; i < 54; i++) {
+    for (int j = 0; j < NUM_ADC_PINS * 2; j++) {
+      printf("%d ", read_pixel(i, j));
+    }
+    printf("; ");
+  }
+  printf("];\n");
+}
+
+static int16_t read_pixel(uint8_t row, uint8_t col)
+{ 
+  int16_t reset_val, integrate_val;
+  
   // Disable pixel reset while configuring pixel number
   RESET_PIX_BANK->ODR |= RESET_PIX_PIN; US_DELAY(1);
   
@@ -314,17 +344,30 @@ static void read_pixel(uint8_t row, uint8_t col)
   // Pulse pixel reset to begin integration
   RESET_PIX_BANK->ODR &= ~RESET_PIX_PIN; US_DELAY(1);
   RESET_PIX_BANK->ODR |= RESET_PIX_PIN; US_DELAY(1);
+  reset_val = adc_read(col);
   US_DELAY(10);
+  integrate_val = adc_read(col);
+  
+  return reset_val - integrate_val;
+}
+
+static uint16_t adc_read(uint8_t col)
+{
+  ADCHandle.Instance = COL_ADC[col / 2];
+  chConfig.Channel = COL_ADC_CHAN[col / 2];
+  assert(HAL_ADC_ConfigChannel(&ADCHandle, &chConfig) == HAL_OK);
+  
+  HAL_ADC_Start(&ADCHandle);
+  HAL_ADC_PollForConversion(&ADCHandle, HAL_MAX_DELAY);
+  return HAL_ADC_GetValue(&ADCHandle);
 }
 
 static void set_col_parity(uint8_t col)
 {
   if (col % 2) {
-    COL_PARITY_BANK1->ODR = 0;
-    COL_PARITY_BANK2->ODR = 0;
+    SEL_PARITY_BANK->ODR &= ~SEL_PARITY_PIN;
   } else {
-    COL_PARITY_BANK1->ODR = 0xFFFF;
-    COL_PARITY_BANK1->ODR = 0xFFFF;
+    SEL_PARITY_BANK->ODR |= SEL_PARITY_PIN;
   }
 }
 
@@ -334,16 +377,16 @@ static void load_row(uint8_t row)
   RESET_ROW_BANK->ODR |= RESET_ROW_PIN; US_DELAY(1);
   RESET_ROW_BANK->ODR &= ~RESET_ROW_PIN; US_DELAY(1);
   
-  // Set row # on din_row[5:0]
-  HAL_GPIO_WritePin(DIN_ROW1_BANK, DIN_ROW1_PIN, row & GPIO_PIN_0);
-  HAL_GPIO_WritePin(DIN_ROW2_BANK, DIN_ROW2_PIN, row & GPIO_PIN_1);
-  HAL_GPIO_WritePin(DIN_ROW3_BANK, DIN_ROW3_PIN, row & GPIO_PIN_2);
-  HAL_GPIO_WritePin(DIN_ROW4_BANK, DIN_ROW4_PIN, row & GPIO_PIN_3);
-  HAL_GPIO_WritePin(DIN_ROW5_BANK, DIN_ROW5_PIN, row & GPIO_PIN_4);
-  HAL_GPIO_WritePin(DIN_ROW6_BANK, DIN_ROW6_PIN, row & GPIO_PIN_5);
+  // Set row # on DINROW_[5:0]
+  HAL_GPIO_WritePin(DINROW_0_BANK, DINROW_0_PIN, row & GPIO_PIN_0);
+  HAL_GPIO_WritePin(DINROW_1_BANK, DINROW_1_PIN, row & GPIO_PIN_1);
+  HAL_GPIO_WritePin(DINROW_2_BANK, DINROW_2_PIN, row & GPIO_PIN_2);
+  HAL_GPIO_WritePin(DINROW_3_BANK, DINROW_3_PIN, row & GPIO_PIN_3);
+  HAL_GPIO_WritePin(DINROW_4_BANK, DINROW_4_PIN, row & GPIO_PIN_4);
+  HAL_GPIO_WritePin(DINROW_5_BANK, DINROW_5_PIN, row & GPIO_PIN_5);
   US_DELAY(1);
   
-  // Rising edge on load_row to latch din_row
+  // Rising edge on load_row to latch DINROW_
   LOAD_ROW_BANK->ODR |= LOAD_ROW_PIN; US_DELAY(1);
   LOAD_ROW_BANK->ODR &= ~LOAD_ROW_PIN; US_DELAY(1);
 }
@@ -354,16 +397,16 @@ static void load_col(uint8_t col)
   RESET_COL_BANK->ODR |= RESET_COL_PIN; US_DELAY(1);
   RESET_COL_BANK->ODR &= ~RESET_COL_PIN; US_DELAY(1);
   
-  // Set col # on din_col[5:0]
-  HAL_GPIO_WritePin(DIN_COL1_BANK, DIN_COL1_PIN, col & GPIO_PIN_0);
-  HAL_GPIO_WritePin(DIN_COL2_BANK, DIN_COL2_PIN, col & GPIO_PIN_1);
-  HAL_GPIO_WritePin(DIN_COL3_BANK, DIN_COL3_PIN, col & GPIO_PIN_2);
-  HAL_GPIO_WritePin(DIN_COL4_BANK, DIN_COL4_PIN, col & GPIO_PIN_3);
-  HAL_GPIO_WritePin(DIN_COL5_BANK, DIN_COL5_PIN, col & GPIO_PIN_4);
-  HAL_GPIO_WritePin(DIN_COL6_BANK, DIN_COL6_PIN, col & GPIO_PIN_5);
+  // Set col # on DINCOL_[5:0]
+  HAL_GPIO_WritePin(DINCOL_0_BANK, DINCOL_0_PIN, col & GPIO_PIN_0);
+  HAL_GPIO_WritePin(DINCOL_1_BANK, DINCOL_1_PIN, col & GPIO_PIN_1);
+  HAL_GPIO_WritePin(DINCOL_2_BANK, DINCOL_2_PIN, col & GPIO_PIN_2);
+  HAL_GPIO_WritePin(DINCOL_3_BANK, DINCOL_3_PIN, col & GPIO_PIN_3);
+  HAL_GPIO_WritePin(DINCOL_4_BANK, DINCOL_4_PIN, col & GPIO_PIN_4);
+  HAL_GPIO_WritePin(DINCOL_5_BANK, DINCOL_5_PIN, col & GPIO_PIN_5);
   US_DELAY(1);
   
-  // Rising edge on load_col to latch din_col
+  // Rising edge on load_col to latch DINCOL_
   LOAD_COL_BANK->ODR |= LOAD_COL_PIN; US_DELAY(1);
   LOAD_COL_BANK->ODR &= ~LOAD_COL_PIN; US_DELAY(1);
 }
