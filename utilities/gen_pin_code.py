@@ -54,9 +54,9 @@ def main():
     pin_data = []
     for row in reader:
         if is_adc:
-            pin_data.append(Pin(row[0][1], row[0][2], row[1], row[2], row[3]))
+            pin_data.append(Pin(row[0][1], row[0][2:], row[1], row[2], row[3]))
         else:
-            pin_data.append(Pin(row[0][1], row[0][2], row[1]))
+            pin_data.append(Pin(row[0][1], row[0][2:], row[1]))
     in_file.close()
 
     pin_data.sort(key=lambda x: x.label)
