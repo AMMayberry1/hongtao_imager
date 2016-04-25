@@ -10,12 +10,12 @@ class Pin:
         self.adc      = adc
         self.adc_chan = adc_chan
 
-        self.bank_define = "GPIO" + self.bank
-        self.num_define  = "GPIO_PIN_" + self.num
+        self.bank_define = self.label + "_BANK"
+        self.num_define  = self.label + "_PIN"
 
         if self.adc != None:
-            self.adc_define = "ADC" + self.adc
-            self.adc_chan_define = "ADC_CHANNEL_" + self.adc_chan
+            self.adc_define = self.label + "_ADC"
+            self.adc_chan_define = self.label + "_ADC_CHAN"
 
     def __repr__(self):
         str_self = "P" + self.bank + self.num + ":" + " " + self.label
@@ -71,20 +71,25 @@ def main():
     out_file.write("\n\n")
 
     for pin in pin_data:
-        out_file.write("#define " + pin.label + "_BANK " + pin.bank_define + "\n")
-        out_file.write("#define " + pin.label + "_PIN  " + pin.num_define + "\n")
+        out_file.write("#define " + pin.bank_define + " GPIO" + pin.bank + "\n")
+        out_file.write("#define " + pin.num_define + " GPIO_PIN_" + pin.num + "\n")
+
+        if is_adc:
+            out_file.write("#define " + pin.adc_define + " ADC" + pin.adc + "\n")
+            out_file.write("#define " + pin.adc_chan_define + " ADC_CHANNEL_" + pin.adc_chan + "\n")
+
 
     out_file.write('\n')
 
     # pass 2: arrays
     if is_adc:
-        out_file.write(build_array_text("COL_ADC_BANK", [x.bank_define for x in pin_data]) + "\n\n")
-        out_file.write(build_array_text("COL_ADC_PIN", [x.num_define for x in pin_data]) + "\n\n")
-        out_file.write(build_array_text("COL_ADC", [x.adc_define for x in pin_data]) + "\n\n")
-        out_file.write(build_array_text("COL_ADC_CHAN", [x.adc_chan_define for x in pin_data]) + "\n\n")
+        out_file.write(build_array_text("GPIO_TypeDef *COL_ADC_BANK", [x.bank_define for x in pin_data]) + "\n\n")
+        out_file.write(build_array_text("uint16_t COL_ADC_PIN", [x.num_define for x in pin_data]) + "\n\n")
+        out_file.write(build_array_text("ADC_TypeDef *COL_ADC", [x.adc_define for x in pin_data]) + "\n\n")
+        out_file.write(build_array_text("uint32_t COL_ADC_CHAN", [x.adc_chan_define for x in pin_data]) + "\n\n")
     else:
-        out_file.write(build_array_text("MISC_BANK", [x.bank_define for x in pin_data]) + "\n\n")
-        out_file.write(build_array_text("MISC_PIN", [x.num_define for x in pin_data]) + "\n\n")
+        out_file.write(build_array_text("GPIO_TypeDef *MISC_BANK", [x.bank_define for x in pin_data]) + "\n\n")
+        out_file.write(build_array_text("uint16_t MISC_PIN", [x.num_define for x in pin_data]) + "\n\n")
 
 def build_array_text(label, values):
     array_str = label + "[] = {" + values[0]
